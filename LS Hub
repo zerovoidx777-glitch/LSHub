@@ -1,0 +1,490 @@
+-- =========================================================
+-- Universal Compatibility Layer (ตัวรองรับทุกตัวรัน)
+-- =========================================================
+local genv = (getgenv and getgenv()) or _G or shared
+local setclip = setclipboard or toclipboard or set_clipboard or (Clipboard and Clipboard.set)
+
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+
+-- Window Setup
+local Window = Fluent:CreateWindow({
+    Title = "LS hub [beta]",
+    SubTitle = "Universal Edition",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = false, -- ปิดไว้เพื่อให้ลื่นและไม่เด้งบนทุกตัวรัน
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Tabs
+local Tabs = {
+    Main = Window:AddTab({ Title = "Main", Icon = "home" }),
+    Player = Window:AddTab({ Title = "Player", Icon = "user" }),
+    Follow = Window:AddTab({ Title = "Follow", Icon = "users" }),
+    ESP = Window:AddTab({ Title = "ESP", Icon = "eye" }),
+    Server = Window:AddTab({ Title = "Server", Icon = "server" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+}
+
+---------------------------------------------------------
+-- MAIN TAB (แนะนำตัวผู้สร้าง)
+---------------------------------------------------------
+Tabs.Main:AddParagraph({
+    Title = "👑 Creator Info",
+    Content = "ยินดีต้อนรับสู่ LS hub [beta] - รองรับการใช้งานทุกตัวรัน"
+})
+
+Tabs.Main:AddParagraph({
+    Title = "📱 TikTok",
+    Content = "laststandx67"
+})
+
+Tabs.Main:AddParagraph({
+    Title = "📸 Instagram",
+    Content = "program03022557"
+})
+
+---------------------------------------------------------
+-- PLAYER TAB
+---------------------------------------------------------
+local SpeedToggle = Tabs.Player:AddToggle("SpeedToggle", { Title = "Enable WalkSpeed", Default = false })
+local SpeedSlider = Tabs.Player:AddSlider("SpeedSlider", {
+    Title = "WalkSpeed",
+    Min = 16,
+    Max = 200,
+    Default = 16,
+    Rounding = 0
+})
+
+local JumpToggle = Tabs.Player:AddToggle("JumpToggle", { Title = "Enable JumpPower", Default = false })
+local JumpSlider = Tabs.Player:AddSlider("JumpSlider", {
+    Title = "JumpPower",
+    Min = 50,
+    Max = 300,
+    Default = 50,
+    Rounding = 0
+})
+
+-- Smooth Fly
+local FlyToggle = Tabs.Player:AddToggle("FlyToggle", { Title = "Smooth Fly (บินแบบเนียน)", Default = false })
+local FlySpeedSlider = Tabs.Player:AddSlider("FlySpeed", {
+    Title = "Fly Speed",
+    Min = 10,
+    Max = 150,
+    Default = 50,
+    Rounding = 0
+})
+
+-- Spin 360
+local SpinToggle = Tabs.Player:AddToggle("SpinToggle", { Title = "Spin 360 (หมุนตัว)", Default = false })
+local SpinSpeedSlider = Tabs.Player:AddSlider("SpinSpeed", {
+    Title = "Spin Speed",
+    Min = 1,
+    Max = 100,
+    Default = 30,
+    Rounding = 0
+})
+
+-- Dash
+local DashSlider = Tabs.Player:AddSlider("DashPower", {
+    Title = "Dash Power (แรงพุ่ง)",
+    Min = 50,
+    Max = 300,
+    Default = 120,
+    Rounding = 0
+})
+
+Tabs.Player:AddButton({
+    Title = "Dash (กดเพื่อพุ่ง)",
+    Description = "พุ่งตัวไปข้างหน้าทันที",
+    Callback = function()
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChildOfClass("Humanoid") then
+            local hrp = char.HumanoidRootPart
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local moveDir = hum.MoveDirection
+            
+            if moveDir.Magnitude == 0 then
+                moveDir = hrp.CFrame.LookVector
+            end
+            
+            hrp.AssemblyLinearVelocity = moveDir * DashSlider.Value + Vector3.new(0, 10, 0)
+        end
+    end
+})
+
+local InfJumpToggle = Tabs.Player:AddToggle("InfJump", { Title = "Infinite Jump", Default = false })
+local NoclipToggle = Tabs.Player:AddToggle("Noclip", { Title = "Noclip (เดินทะลุ)", Default = false })
+
+---------------------------------------------------------
+-- FOLLOW TAB (เมนูติดตามผู้เล่น)
+---------------------------------------------------------
+local SelectedPlayer = nil
+
+local function GetPlayerNames()
+    local names = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            table.insert(names, p.Name)
+        end
+    end
+    if #names == 0 then
+        table.insert(names, "ไม่มีผู้เล่นอื่น")
+    end
+    return names
+end
+
+local TargetDropdown = Tabs.Follow:AddDropdown("TargetPlayer", {
+    Title = "Select Player (เลือกผู้เล่น)",
+    Values = GetPlayerNames(),
+    Multi = false,
+    Default = 1,
+})
+
+TargetDropdown:OnChanged(function(Value)
+    SelectedPlayer = Players:FindFirstChild(Value)
+end)
+
+Tabs.Follow:AddButton({
+    Title = "Refresh Players (รีเฟรชรายชื่อ)",
+    Callback = function()
+        TargetDropdown:SetValues(GetPlayerNames())
+    end
+})
+
+-- Spectate
+local ViewToggle = Tabs.Follow:AddToggle("ViewToggle", { Title = "Spectate (ดูแบบตัวไม่ไป)", Default = false })
+ViewToggle:OnChanged(function(Value)
+    local cam = workspace.CurrentCamera
+    if Value then
+        if SelectedPlayer and SelectedPlayer.Character and SelectedPlayer.Character:FindFirstChildOfClass("Humanoid") then
+            cam.CameraSubject = SelectedPlayer.Character:FindFirstChildOfClass("Humanoid")
+        else
+            Fluent:Notify({ Title = "Warning", Content = "โปรดเลือกผู้เล่นที่อยู่ในเกม", Duration = 3 })
+            ViewToggle:SetValue(false)
+        end
+    else
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+            cam.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        end
+    end
+end)
+
+-- Attach / Follow
+local FollowToggle = Tabs.Follow:AddToggle("FollowToggle", { Title = "Attach / Follow (วาร์ปตามติด)", Default = false })
+local FollowDistanceSlider = Tabs.Follow:AddSlider("FollowDistance", {
+    Title = "Follow Distance (ระยะห่าง)",
+    Min = 0,
+    Max = 20,
+    Default = 3,
+    Rounding = 0
+})
+
+-- Orbit
+local OrbitToggle = Tabs.Follow:AddToggle("OrbitToggle", { Title = "Orbit (หมุนรอบตัว)", Default = false })
+local OrbitSpeedSlider = Tabs.Follow:AddSlider("OrbitSpeed", {
+    Title = "Orbit Speed (ความเร็วหมุน)",
+    Min = 1,
+    Max = 100,
+    Default = 30,
+    Rounding = 0
+})
+local OrbitDistanceSlider = Tabs.Follow:AddSlider("OrbitDistance", {
+    Title = "Orbit Distance (ระยะห่างการหมุน)",
+    Min = 3,
+    Max = 30,
+    Default = 8,
+    Rounding = 0
+})
+
+---------------------------------------------------------
+-- ESP TAB (ระบบสแกนตัวผู้เล่น)
+---------------------------------------------------------
+local ESPHighlightToggle = Tabs.ESP:AddToggle("ESPHighlight", { Title = "Player Highlight (สแกนเรืองแสง)", Default = false })
+local ESPNameToggle = Tabs.ESP:AddToggle("ESPName", { Title = "Player Name & Distance (สแกนชื่อ/ระยะทาง)", Default = false })
+
+local ESPColorPicker = Tabs.ESP:AddColorpicker("ESPColor", {
+    Title = "ESP Color (สีสแกน)",
+    Default = Color3.fromRGB(255, 0, 0)
+})
+
+local function ApplyESP(player)
+    if player == LocalPlayer then return end
+
+    local function CharacterAdded(char)
+        -- 1. Highlight ESP
+        if not char:FindFirstChild("LS_Highlight") then
+            local highlight = Instance.new("Highlight")
+            highlight.Name = "LS_Highlight"
+            highlight.Adornee = char
+            highlight.FillColor = ESPColorPicker.Value
+            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+            highlight.FillTransparency = 0.5
+            highlight.OutlineTransparency = 0
+            highlight.Enabled = ESPHighlightToggle.Value
+            pcall(function() highlight.Parent = char end)
+        end
+
+        -- 2. Name / Distance ESP
+        local hrp = char:WaitForChild("HumanoidRootPart", 5)
+        if hrp and not hrp:FindFirstChild("LS_NameESP") then
+            local bb = Instance.new("BillboardGui")
+            bb.Name = "LS_NameESP"
+            bb.Adornee = hrp
+            bb.Size = UDim2.new(0, 100, 0, 40)
+            bb.StudsOffset = Vector3.new(0, 3, 0)
+            bb.AlwaysOnTop = true
+            bb.Enabled = ESPNameToggle.Value
+
+            local lbl = Instance.new("TextLabel")
+            lbl.Name = "InfoLabel"
+            lbl.Size = UDim2.new(1, 0, 1, 0)
+            lbl.BackgroundTransparency = 1
+            lbl.TextColor3 = ESPColorPicker.Value
+            lbl.TextStrokeTransparency = 0
+            lbl.TextSize = 13
+            lbl.Font = Enum.Font.SourceSansBold
+            lbl.Text = player.Name
+            lbl.Parent = bb
+
+            pcall(function() bb.Parent = hrp end)
+        end
+    end
+
+    if player.Character then
+        CharacterAdded(player.Character)
+    end
+    player.CharacterAdded:Connect(CharacterAdded)
+end
+
+for _, p in ipairs(Players:GetPlayers()) do
+    ApplyESP(p)
+end
+Players.PlayerAdded:Connect(ApplyESP)
+
+ESPHighlightToggle:OnChanged(function(Value)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character and p.Character:FindFirstChild("LS_Highlight") then
+            p.Character.LS_Highlight.Enabled = Value
+        end
+    end
+end)
+
+ESPNameToggle:OnChanged(function(Value)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local bb = p.Character.HumanoidRootPart:FindFirstChild("LS_NameESP")
+            if bb then bb.Enabled = Value end
+        end
+    end
+end)
+
+ESPColorPicker:OnChanged(function(Value)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character then
+            if p.Character:FindFirstChild("LS_Highlight") then
+                p.Character.LS_Highlight.FillColor = Value
+            end
+            if p.Character:FindFirstChild("HumanoidRootPart") and p.Character.HumanoidRootPart:FindFirstChild("LS_NameESP") then
+                p.Character.HumanoidRootPart.LS_NameESP.InfoLabel.TextColor3 = Value
+            end
+        end
+    end
+end)
+
+---------------------------------------------------------
+-- SERVER TAB (จัดการเซิร์ฟเวอร์)
+---------------------------------------------------------
+Tabs.Server:AddButton({
+    Title = "Rejoin Server (รีจอยเซิร์ฟเดิม)",
+    Description = "เชื่อมต่อกลับเข้าเซิร์ฟเวอร์ห้องเดิมทันที",
+    Callback = function()
+        Fluent:Notify({ Title = "Rejoining...", Content = "กำลังเชื่อมต่อเข้าเซิร์ฟเวอร์เดิม...", Duration = 3 })
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+        end)
+    end
+})
+
+Tabs.Server:AddButton({
+    Title = "Rejoin New Server (ย้ายเซิร์ฟเวอร์ใหม่)",
+    Description = "สุ่มเข้าเซิร์ฟเวอร์อื่นในเกมเดียวกัน",
+    Callback = function()
+        Fluent:Notify({ Title = "Rejoining...", Content = "กำลังค้นหาและย้ายไปเซิร์ฟเวอร์ใหม่...", Duration = 3 })
+        pcall(function()
+            TeleportService:Teleport(game.PlaceId, LocalPlayer)
+        end)
+    end
+})
+
+Tabs.Server:AddButton({
+    Title = "Copy Server Job ID (คัดลอกรหัสเซิร์ฟ)",
+    Description = "คัดลอก Job ID สำหรับแชร์ให้เพื่อนเข้าตาม",
+    Callback = function()
+        if setclip then
+            pcall(function() setclip(tostring(game.JobId)) end)
+            Fluent:Notify({ Title = "Copied!", Content = "คัดลอก Job ID เรียบร้อยแล้ว", Duration = 3 })
+        else
+            Fluent:Notify({ Title = "Error", Content = "ตัวรันนี้ไม่รองรับการคัดลอกลง คลิปบอร์ด", Duration = 3 })
+        end
+    end
+})
+
+---------------------------------------------------------
+-- SETTINGS TAB (ปรับเปลี่ยนธีมและตั้งค่า UI)
+---------------------------------------------------------
+local ThemeDropdown = Tabs.Settings:AddDropdown("ThemeDropdown", {
+    Title = "App Theme (เลือกธีม UI)",
+    Values = {"Dark", "Darker", "Light", "Nord", "Aqua", "Rose"},
+    Default = "Dark",
+    Multi = false,
+})
+
+ThemeDropdown:OnChanged(function(Value)
+    Fluent:SetTheme(Value)
+end)
+
+local KeybindPicker = Tabs.Settings:AddKeybind("ToggleKeybind", {
+    Title = "Toggle UI Keybind (ปุ่มซ่อน/เปิด UI)",
+    Mode = "Toggle",
+    Default = "LeftControl",
+    ChangedCallback = function(NewKey)
+        Window.MinimizeKey = NewKey
+    end
+})
+
+Tabs.Settings:AddButton({
+    Title = "Unload Script (ปิดการทำงานสคริปต์)",
+    Description = "ลบ UI ออกทันที",
+    Callback = function()
+        Fluent:Destroy()
+    end
+})
+
+---------------------------------------------------------
+-- LOGIC & LOOPS
+---------------------------------------------------------
+
+FlyToggle:OnChanged(function()
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChildOfClass("Humanoid") then
+        if not FlyToggle.Value then
+            char:FindFirstChildOfClass("Humanoid").PlatformStand = false
+        end
+    end
+end)
+
+local orbitAngle = 0
+
+RunService.RenderStepped:Connect(function(deltaTime)
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChildOfClass("Humanoid") and char:FindFirstChild("HumanoidRootPart") then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char.HumanoidRootPart
+        local cam = workspace.CurrentCamera
+
+        -- WalkSpeed
+        if SpeedToggle.Value then
+            hum.WalkSpeed = SpeedSlider.Value
+        end
+
+        -- JumpPower
+        if JumpToggle.Value then
+            hum.UseJumpPower = true
+            hum.JumpPower = JumpSlider.Value
+        end
+
+        -- Noclip
+        if NoclipToggle.Value then
+            for _, part in ipairs(char:GetChildren()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end
+
+        -- Spin 360
+        if SpinToggle.Value then
+            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(SpinSpeedSlider.Value), 0)
+        end
+
+        -- Smooth Fly
+        if FlyToggle.Value then
+            hum.PlatformStand = true
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            
+            local moveDir = Vector3.zero
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+
+            if moveDir.Magnitude > 0 then
+                moveDir = moveDir.Unit
+                hrp.CFrame = hrp.CFrame + (moveDir * (FlySpeedSlider.Value * deltaTime * 5))
+            end
+        end
+
+        -- Follow / Attach Logic
+        if FollowToggle.Value and SelectedPlayer and SelectedPlayer.Character and SelectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local targetHRP = SelectedPlayer.Character.HumanoidRootPart
+            hrp.CFrame = targetHRP.CFrame * CFrame.new(0, 0, FollowDistanceSlider.Value)
+        end
+
+        -- Orbit Logic
+        if OrbitToggle.Value and SelectedPlayer and SelectedPlayer.Character and SelectedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local targetHRP = SelectedPlayer.Character.HumanoidRootPart
+            orbitAngle = orbitAngle + (math.rad(OrbitSpeedSlider.Value) * deltaTime * 5)
+            local offset = Vector3.new(math.cos(orbitAngle) * OrbitDistanceSlider.Value, 0, math.sin(orbitAngle) * OrbitDistanceSlider.Value)
+            hrp.CFrame = CFrame.new(targetHRP.Position + offset, targetHRP.Position)
+        end
+
+        -- Update ESP Distances
+        if ESPNameToggle.Value then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    local targetHRP = p.Character.HumanoidRootPart
+                    local bb = targetHRP:FindFirstChild("LS_NameESP")
+                    if bb and bb:FindFirstChild("InfoLabel") then
+                        local dist = math.floor((hrp.Position - targetHRP.Position).Magnitude)
+                        bb.InfoLabel.Text = p.Name .. "\n[" .. tostring(dist) .. "m]"
+                    end
+                end
+            end
+        end
+    end
+end)
+
+---------------------------------------------------------
+-- INFINITE JUMP (Universal Clean Event)
+---------------------------------------------------------
+if genv.InfJumpConnection then
+    pcall(function() genv.InfJumpConnection:Disconnect() end)
+    genv.InfJumpConnection = nil
+end
+
+genv.InfJumpConnection = UserInputService.JumpRequest:Connect(function()
+    if InfJumpToggle and InfJumpToggle.Value == true then
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChildOfClass("Humanoid") then
+            char:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+-- Notification
+Fluent:Notify({
+    Title = "LS hub [beta]",
+    Content = "โหลดสคริปต์สำเร็จ! พร้อมรองรับทุกตัวรันเรียบร้อยแล้ว",
+    Duration = 5
+})
